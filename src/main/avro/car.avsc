@@ -1,0 +1,27 @@
+{"namespace": "auto.ria.core",
+ "type": "record",
+ "name": "CarAvro",
+ "fields": [
+     {"name": "id", "type": "string"},
+     {"name": "addDate", "type": "string"},
+     {"name": "brandId", "type": "int"},
+     {"name": "brand", "type": "string"},
+     {"name": "modelId", "type": "int"},
+     {"name": "model", "type": "string"},
+     {"name": "title", "type": "string"},
+     {"name": "desc", "type": ["string", "null"]},
+     {"name": "priceUsd", "type": "int"},
+     {"name": "year", "type": "int"},
+     {"name": "link", "type": "string"},
+     {"name": "fuelId", "type": "int"},
+     {"name": "fuel", "type": "string"},
+     {"name": "gearBoxId",  "type": ["int", "null"]},
+     {"name": "gearBox", "type": ["string", "null"]},
+     {"name": "driveId",  "type": ["int", "null"]},
+     {"name": "drive", "type": ["string", "null"]},
+     {"name": "location", "type": "string"},
+     {"name": "region", "type": "string"},
+     {"name": "race", "type": ["string", "null"]},
+     {"name": "raceInt", "type": ["int", "null"]}
+ ]
+}
