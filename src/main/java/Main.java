@@ -3,7 +3,7 @@ import com.google.common.collect.ImmutableList;
 import org.apache.commons.lang3.SerializationUtils;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.spark.SparkConf;
@@ -18,11 +18,14 @@ import scala.Tuple2;
 import java.io.Serializable;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.Supplier;
 
 public class Main {
 
+    Supplier<Producer> producer = KafkaProducerUtils::newKafkaProducer;
+
     public static void main(String[] args) {
-        KafkaProducer.startProduceMessagesFromAvroFileToKafka();
+        KafkaProducerUtils.startProduceMessagesFromAvroFileToKafka();
 
         SparkConf sparkConf = new SparkConf().setAppName("sparkStreamingPet").setMaster("local[2]");
         JavaStreamingContext javaStreamingContext = new JavaStreamingContext(sparkConf, Durations.seconds(1));
@@ -37,7 +40,7 @@ public class Main {
         JavaInputDStream<ConsumerRecord<String, byte[]>> javaInputDStream =
                 KafkaUtils.createDirectStream(javaStreamingContext,
                         LocationStrategies.PreferConsistent(),
-                        ConsumerStrategies.Subscribe(ImmutableList.of(KafkaProducer.MAIN_TOPIC), parameters));
+                        ConsumerStrategies.Subscribe(ImmutableList.of(KafkaProducerUtils.MAIN_TOPIC), parameters));
 
 //        javaInputDStream
 //                .map(record -> SerializationUtils.deserialize(record.value()))
@@ -54,10 +57,30 @@ public class Main {
                         Tuple2.apply(
                                 carAvro.getBrand() + ":" + carAvro.getYear(),
                                 new CountTotalCost(1, carAvro.getPriceUsd())))
-                .reduceByKey((obj1, obj2) -> new CountTotalCost(
-                        obj1.getCount() + obj2.getCount(),
-                        obj1.getTotalCost() + obj2.getTotalCost()))
+                .reduceByKey((brand1, brand2) -> new CountTotalCost(
+                        brand1.getCount() + brand2.getCount(),
+                        brand1.getTotalCost() + brand2.getTotalCost()))
                 .map(pair -> pair._1 + " -> " + pair._2.getCount() + ":" + pair._2.getTotalCost())
+                .print();
+
+        javaInputDStream
+                .map(record -> (CarAvro) SerializationUtils.deserialize(record.value()))
+                .mapToPair(carAvro ->
+                        Tuple2.apply(
+                                carAvro.getBrand() + ":" + carAvro.getModel() + ":" + carAvro.getYear(),
+                                new CountTotalCostMinMax(1,
+                                        carAvro.getPriceUsd(), carAvro.getPriceUsd(), carAvro.getPriceUsd())))
+                .reduceByKey((model1, model2) ->
+                        new CountTotalCostMinMax(
+                                model1.count + model2.count,
+                                model1.totalCost + model2.totalCost,
+                                Math.min(model1.min, model2.min),
+                                Math.max(model1.max, model2.max)))
+                .map(pair -> pair._1 + " -> " +
+                        pair._2.getCount() + ":" +
+                        pair._2.getTotalCost() + ":" +
+                        pair._2.getMin() + ":" +
+                        pair._2.getMax())
                 .print();
 
         javaStreamingContext.start();
@@ -67,17 +90,47 @@ public class Main {
         int count;
         double totalCost;
 
-        public CountTotalCost(int count, double totalCost) {
+        CountTotalCost(int count, double totalCost) {
             this.count = count;
             this.totalCost = totalCost;
         }
 
-        public int getCount() {
+        int getCount() {
             return count;
         }
 
-        public double getTotalCost() {
+        double getTotalCost() {
             return totalCost;
+        }
+    }
+
+    private static class CountTotalCostMinMax implements Serializable {
+        int count;
+        double totalCost;
+        double min;
+        double max;
+
+        CountTotalCostMinMax(int count, double totalCost, double min, double max) {
+            this.count = count;
+            this.totalCost = totalCost;
+            this.min = min;
+            this.max = max;
+        }
+
+        int getCount() {
+            return count;
+        }
+
+        double getTotalCost() {
+            return totalCost;
+        }
+
+        double getMin() {
+            return min;
+        }
+
+        double getMax() {
+            return max;
         }
     }
 

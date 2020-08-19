@@ -6,6 +6,7 @@ import org.apache.commons.lang3.SerializationUtils;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.AdminClientConfig;
 import org.apache.kafka.clients.admin.NewTopic;
+import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
@@ -18,20 +19,16 @@ import java.util.Collections;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 
-class KafkaProducer {
+class KafkaProducerUtils {
+
     static final String MAIN_TOPIC = "topic";
     private static final String BROKER_HOST = "localhost:29092";
 
     static void startProduceMessagesFromAvroFileToKafka() {
         createTopicIfNotExists();
 
-        Properties properties = new Properties();
-        properties.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, BROKER_HOST);
-        properties.put(ProducerConfig.CLIENT_ID_CONFIG, "producer");
-        properties.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-        properties.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class);
+        Producer<String, byte[]> producer = newKafkaProducer();
 
-        Producer<String, byte[]> producer = new org.apache.kafka.clients.producer.KafkaProducer<>(properties);
         File file = new File("auto.ria.avro");
         DatumReader<CarAvro> reader = new SpecificDatumReader<>(CarAvro.class);
         DataFileReader<CarAvro> fileReader = null;
@@ -52,6 +49,16 @@ class KafkaProducer {
         }
     }
 
+    public static <T> Producer<String, T> newKafkaProducer() {
+        Properties properties = new Properties();
+        properties.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, BROKER_HOST);
+        properties.put(ProducerConfig.CLIENT_ID_CONFIG, "producer");
+        properties.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        properties.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class);
+
+        return new KafkaProducer<>(properties);
+    }
+
     private static void createTopicIfNotExists() {
         Properties properties = new Properties();
         properties.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, BROKER_HOST);
@@ -59,8 +66,8 @@ class KafkaProducer {
 
         AdminClient adminClient = AdminClient.create(properties);
         try {
-            if (!adminClient.listTopics().names().get().contains(KafkaProducer.MAIN_TOPIC)) {
-                NewTopic newTopic = new NewTopic(KafkaProducer.MAIN_TOPIC, 1, (short) 1);
+            if (!adminClient.listTopics().names().get().contains(KafkaProducerUtils.MAIN_TOPIC)) {
+                NewTopic newTopic = new NewTopic(KafkaProducerUtils.MAIN_TOPIC, 1, (short) 1);
                 adminClient.createTopics(Collections.singletonList(newTopic));
             }
         } catch (InterruptedException | ExecutionException e) {
