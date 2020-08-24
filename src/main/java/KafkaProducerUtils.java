@@ -22,10 +22,14 @@ import java.util.concurrent.ExecutionException;
 class KafkaProducerUtils {
 
     static final String MAIN_TOPIC = "topic";
+    static final String YEAR_TOPIC = "year";
+    static final String MODEL_TOPIC = "model";
+    static final String BRAND_TOPIC = "brand";
     private static final String BROKER_HOST = "localhost:29092";
+    private static int i;
 
     static void startProduceMessagesFromAvroFileToKafka() {
-        createTopicIfNotExists();
+        createTopicIfNotExists(KafkaProducerUtils.MAIN_TOPIC);
 
         Producer<String, byte[]> producer = newKafkaProducer();
 
@@ -49,7 +53,7 @@ class KafkaProducerUtils {
         }
     }
 
-    public static <T> Producer<String, T> newKafkaProducer() {
+    public static Producer<String, byte[]> newKafkaProducer() {
         Properties properties = new Properties();
         properties.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, BROKER_HOST);
         properties.put(ProducerConfig.CLIENT_ID_CONFIG, "producer");
@@ -59,15 +63,31 @@ class KafkaProducerUtils {
         return new KafkaProducer<>(properties);
     }
 
-    private static void createTopicIfNotExists() {
+    public static Producer<String, String> newStringKafkaProducer() {
+        Properties properties = new Properties();
+        properties.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, BROKER_HOST);
+        properties.put(ProducerConfig.CLIENT_ID_CONFIG, "producer" + i++);
+        properties.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        properties.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+
+        return new KafkaProducer<>(properties);
+    }
+
+    public static void createTopicsIfNotExists() {
+        createTopicIfNotExists(BRAND_TOPIC);
+        createTopicIfNotExists(YEAR_TOPIC);
+        createTopicIfNotExists(MODEL_TOPIC);
+    }
+
+    private static void createTopicIfNotExists(String topic) {
         Properties properties = new Properties();
         properties.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, BROKER_HOST);
         properties.put(AdminClientConfig.CLIENT_ID_CONFIG, "admin");
 
         AdminClient adminClient = AdminClient.create(properties);
         try {
-            if (!adminClient.listTopics().names().get().contains(KafkaProducerUtils.MAIN_TOPIC)) {
-                NewTopic newTopic = new NewTopic(KafkaProducerUtils.MAIN_TOPIC, 1, (short) 1);
+            if (!adminClient.listTopics().names().get().contains(topic)) {
+                NewTopic newTopic = new NewTopic(topic, 1, (short) 1);
                 adminClient.createTopics(Collections.singletonList(newTopic));
             }
         } catch (InterruptedException | ExecutionException e) {

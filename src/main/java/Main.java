@@ -4,6 +4,7 @@ import org.apache.commons.lang3.SerializationUtils;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.producer.Producer;
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.spark.SparkConf;
@@ -22,7 +23,7 @@ import java.util.function.Supplier;
 
 public class Main {
 
-    Supplier<Producer> producer = KafkaProducerUtils::newKafkaProducer;
+    static Supplier<Producer<String, String>> producer = KafkaProducerUtils::newStringKafkaProducer;
 
     public static void main(String[] args) {
         KafkaProducerUtils.startProduceMessagesFromAvroFileToKafka();
@@ -46,10 +47,13 @@ public class Main {
 //                .map(record -> SerializationUtils.deserialize(record.value()))
 //                .print();
 
+        KafkaProducerUtils.createTopicsIfNotExists();
+
         javaInputDStream
                 .map(record -> (CarAvro) SerializationUtils.deserialize(record.value()))
-                .map(carAvro -> carAvro.getYear() + " -> " + carAvro.getPriceUsd())
-                .print();
+                .map(carAvro -> Tuple2.apply(Integer.toString(carAvro.getYear()), Integer.toString(carAvro.getPriceUsd())))
+                .foreachRDD(rdd -> rdd.foreach(pair ->
+                        producer.get().send(new ProducerRecord<>(KafkaProducerUtils.YEAR_TOPIC, pair._1, pair._2))));
 
         javaInputDStream
                 .map(record -> (CarAvro) SerializationUtils.deserialize(record.value()))
@@ -60,8 +64,9 @@ public class Main {
                 .reduceByKey((brand1, brand2) -> new CountTotalCost(
                         brand1.getCount() + brand2.getCount(),
                         brand1.getTotalCost() + brand2.getTotalCost()))
-                .map(pair -> pair._1 + " -> " + pair._2.getCount() + ":" + pair._2.getTotalCost())
-                .print();
+                .map(pair -> Tuple2.apply(pair._1, pair._2.getCount() + ":" + pair._2.getTotalCost()))
+                .foreachRDD(rdd -> rdd.foreach(pair ->
+                        producer.get().send(new ProducerRecord<>(KafkaProducerUtils.BRAND_TOPIC, pair._1, pair._2))));
 
         javaInputDStream
                 .map(record -> (CarAvro) SerializationUtils.deserialize(record.value()))
@@ -76,12 +81,14 @@ public class Main {
                                 model1.totalCost + model2.totalCost,
                                 Math.min(model1.min, model2.min),
                                 Math.max(model1.max, model2.max)))
-                .map(pair -> pair._1 + " -> " +
+                .map(pair -> Tuple2.apply(
+                        pair._1,
                         pair._2.getCount() + ":" +
-                        pair._2.getTotalCost() + ":" +
-                        pair._2.getMin() + ":" +
-                        pair._2.getMax())
-                .print();
+                                pair._2.getTotalCost() + ":" +
+                                pair._2.getMin() + ":" +
+                                pair._2.getMax()))
+                .foreachRDD(rdd -> rdd.foreach(pair ->
+                        producer.get().send(new ProducerRecord<>(KafkaProducerUtils.MODEL_TOPIC, pair._1, pair._2))));
 
         javaStreamingContext.start();
     }
